@@ -35,6 +35,6 @@ jobs:
         run: |
           git config --global user.name "Deals Hunter Bot"
           git config --global user.email "bot@github.com"
+          git pull origin main --rebase
           git add egypt_deals.db
-          git diff --staged --quiet || git commit -m "تحديث تلقائي لقاعدة بيانات الأسعار"
-          git push
+          git diff --staged --quiet || (git commit -m "تحديث تلقائي لقاعدة بيانات الأسعار" && git push origin main)

@@ -1,0 +1,40 @@
+name: Egypt Deals Hunter 24/7
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  hunt_deals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: سحب ملفات المشروع
+        uses: actions/checkout@v4
+
+      - name: تجهيز لغة بايثون
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: تثبيت المكتبات المطلوبة
+        run: |
+          pip install requests beautifulsoup4 cloudscraper
+
+      - name: تشغيل صائد العروض
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python hunter.py
+
+      - name: حفظ تاريخ الأسعار وتجديد نشاط الحساب
+        run: |
+          git config --global user.name "Deals Hunter Bot"
+          git config --global user.email "bot@github.com"
+          git add egypt_deals.db
+          git diff --staged --quiet || git commit -m "تحديث تلقائي لقاعدة بيانات الأسعار"
+          git push

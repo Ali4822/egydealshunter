@@ -1,40 +1,71 @@
-name: Egypt Deals Hunter 24/7
+name: Egypt Deals Hunter FAST
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    # Github Actions minimum 5 minutes; avoid exact start of the hour.
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   workflow_dispatch:
+    inputs:
+      telegram_only:
+        description: 'Test Telegram connection only (no shopping sites)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
-jobs:
-  hunt_deals:
-    runs-on: ubuntu-latest
-    steps:
-      - name: سحب ملفات المشروع
-        uses: actions/checkout@v4
+concurrency:
+  group: egypt-deals-fast-main
+  cancel-in-progress: false
 
-      - name: تجهيز لغة بايثون
-        uses: actions/setup-python@v5
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: pip
 
-      - name: تثبيت المكتبات المطلوبة
-        run: |
-          pip install requests beautifulsoup4 cloudscraper
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
 
-      - name: تشغيل صائد العروض
+      - name: Scan deals and alert immediately
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DB_FILE: egypt_deals.db
+          AMAZON_PER_RUN: '5'
+          NOON_PER_RUN: '0'
+          ENABLE_NOON_HTML: '0'
+          MAX_WORKERS: '3'
+          PRODUCT_CONFIRMATION: '1'
+          ALLOW_ADVERTISED_ALERTS: '1'
+          MIN_ADVERTISED_PCT: '50'
+          MIN_OBSERVED_PCT: '25'
         run: |
-          python hunter.py
+          if [ "${{ inputs.telegram_only }}" = "true" ]; then
+            python -u hunter.py --test-telegram
+          else
+            python -u hunter.py --once
+          fi
 
-      - name: حفظ تاريخ الأسعار وتجديد نشاط الحساب
+      - name: Persist SQLite history even if scanning had errors
+        if: always()
         run: |
-          git config --global user.name "Deals Hunter Bot"
-          git config --global user.email "bot@github.com"
-          git pull origin main --rebase
-          git add egypt_deals.db
-          git diff --staged --quiet || (git commit -m "تحديث تلقائي لقاعدة بيانات الأسعار" && git push origin main)
+          git config user.name 'Deals Hunter Bot'
+          git config user.email 'bot@github.com'
+          git add -- egypt_deals.db
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update deal observations [skip ci]'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          else
+            echo 'No DB changes to save.'
+          fi

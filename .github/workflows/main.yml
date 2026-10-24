@@ -1,13 +1,12 @@
-name: Egypt Deals Hunter FAST
+name: Egypt Deals Hunter SMART v4
 
 on:
   schedule:
-    # Github Actions minimum 5 minutes; avoid exact start of the hour.
     - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   workflow_dispatch:
     inputs:
       telegram_only:
-        description: 'Test Telegram connection only (no shopping sites)'
+        description: 'Test Telegram only (do not scan stores)'
         type: boolean
         default: false
 
@@ -15,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: egypt-deals-fast-main
+  group: egypt-deals-smart-main
   cancel-in-progress: false
 
 jobs:
@@ -23,12 +22,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main
+        uses: actions/checkout@v4
         with:
           ref: main
           persist-credentials: true
 
-      - uses: actions/setup-python@v5
+      - name: Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
@@ -36,19 +37,18 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Scan deals and alert immediately
+      - name: Scan observed prices and make automatic decisions
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DB_FILE: egypt_deals.db
           AMAZON_PER_RUN: '5'
+          AMAZON_PAGES_PER_CATEGORY: '2'
+          AUTO_WATCH_PER_RUN: '10'
           NOON_PER_RUN: '0'
           ENABLE_NOON_HTML: '0'
           MAX_WORKERS: '3'
           PRODUCT_CONFIRMATION: '1'
-          ALLOW_ADVERTISED_ALERTS: '1'
-          MIN_ADVERTISED_PCT: '50'
-          MIN_OBSERVED_PCT: '25'
         run: |
           if [ "${{ inputs.telegram_only }}" = "true" ]; then
             python -u hunter.py --test-telegram
@@ -56,16 +56,16 @@ jobs:
             python -u hunter.py --once
           fi
 
-      - name: Persist SQLite history even if scanning had errors
+      - name: Save observations (even if scanning had errors)
         if: always()
         run: |
           git config user.name 'Deals Hunter Bot'
           git config user.email 'bot@github.com'
           git add -- egypt_deals.db
           if ! git diff --cached --quiet; then
-            git commit -m 'Update deal observations [skip ci]'
+            git commit -m 'Save automatic deal observations [skip ci]'
             git pull --rebase origin main
             git push origin HEAD:main
           else
-            echo 'No DB changes to save.'
+            echo 'No price changes.'
           fi
